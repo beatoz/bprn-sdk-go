@@ -18,23 +18,28 @@ func ConvertChainId(chainId *uint256.Int) string {
 	return utils.Uint256ToString(chainId)
 }
 
-func GetChainId(stub shim.ChaincodeStubInterface) (uint256.Int, error) {
+func GetChainId(stub shim.ChaincodeStubInterface) (*types.ChainId, error) {
 	channelId := stub.GetChannelID()
 	chainIdInt, err := utils.StringToUint256(channelId)
 	if err != nil {
-		return uint256.Int{}, fmt.Errorf("failed to convert channel ID to chain ID: %v", err)
+		return nil, fmt.Errorf("failed to convert channel ID to chain ID: %v", err)
 	}
 
-	return *chainIdInt, nil
+	chainId, err := types.NewChainIDFromDecimal(chainIdInt.Dec())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create chain ID: %v", err)
+	}
+
+	return chainId, nil
 }
 
-func IsSameChainId(ctx contractapi.TransactionContextInterface, targetChainId *uint256.Int) error {
+func IsSameChainId(ctx contractapi.TransactionContextInterface, targetChainId *types.ChainId) error {
 	chainId, err := GetChainId(ctx.GetStub())
 	if err != nil {
 		return fmt.Errorf("failed to get chain ID: %w", err)
 	}
 
-	if targetChainId.Eq(&chainId) {
+	if targetChainId.Equal(chainId) {
 		return nil
 	} else {
 		return fmt.Errorf("chainId is not equal")

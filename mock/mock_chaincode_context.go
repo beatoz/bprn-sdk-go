@@ -2,7 +2,7 @@ package mock
 
 import (
 	"github.com/beatoz/bprn-sdk-go/chaincodes"
-	"github.com/holiman/uint256"
+	"github.com/beatoz/bprn-sdk-go/types"
 	"github.com/hyperledger/fabric-contract-api-go/v2/contractapi"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 )
@@ -11,16 +11,16 @@ type InvokeChaincodeFunc func(ctx contractapi.TransactionContextInterface, chain
 
 type MockChaincodeContext struct {
 	callerChaincodeName string
-	chainId             uint256.Int
+	chainId             *types.ChainId
 	invokeChaincodeFn   InvokeChaincodeFunc
 	chaincodes.DefaultChaincodeContext
 }
 
-func NewMockChaincodeContext(callerChaincodeName string, chainId uint256.Int) *MockChaincodeContext {
+func NewMockChaincodeContext(callerChaincodeName string, chainId *types.ChainId) *MockChaincodeContext {
 	return &MockChaincodeContext{callerChaincodeName: callerChaincodeName, chainId: chainId}
 }
 
-func (mc *MockChaincodeContext) GetChainId(ctx contractapi.TransactionContextInterface) (uint256.Int, error) {
+func (mc *MockChaincodeContext) GetChainId(ctx contractapi.TransactionContextInterface) (*types.ChainId, error) {
 	return mc.chainId, nil
 }
 
