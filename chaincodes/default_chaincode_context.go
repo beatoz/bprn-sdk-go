@@ -7,7 +7,6 @@ import (
 
 	"github.com/beatoz/bprn-sdk-go/fabric"
 	"github.com/beatoz/bprn-sdk-go/types"
-	"github.com/holiman/uint256"
 	"github.com/hyperledger/fabric-contract-api-go/v2/contractapi"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 )
@@ -19,7 +18,7 @@ func (bc *DefaultChaincodeContext) ChannelName(ctx contractapi.TransactionContex
 	return ctx.GetStub().GetChannelID()
 }
 
-func (bc *DefaultChaincodeContext) GetChainId(ctx contractapi.TransactionContextInterface) (uint256.Int, error) {
+func (bc *DefaultChaincodeContext) GetChainId(ctx contractapi.TransactionContextInterface) (*types.ChainId, error) {
 	return fabric.GetChainId(ctx.GetStub())
 }
 
@@ -79,7 +78,7 @@ func (bc *DefaultChaincodeContext) SetEvent(ctx contractapi.TransactionContextIn
 }
 
 func (bc *DefaultChaincodeContext) IsSameChainId(ctx contractapi.TransactionContextInterface, targetChainId string) error {
-	dstChainId, err := uint256.FromDecimal(targetChainId)
+	dstChainId, err := types.NewChainID(targetChainId)
 	if err != nil {
 		return fmt.Errorf("failed to convert fromChainId to uint64: %w", err)
 	}
