@@ -13,8 +13,8 @@ func NewSigMsgGenerator() *SigMsgGenerator {
 	return &SigMsgGenerator{}
 }
 
-func (s *SigMsgGenerator) GenerateSigMsg(chaincodeName string, chaincodeFunctionName string, chaincodeParams []string) ([]byte, error) {
-	sigMsgArray := s.toArray(chaincodeName, chaincodeFunctionName, chaincodeParams)
+func (s *SigMsgGenerator) GenerateSigMsg(txid, chaincodeName, chaincodeFunctionName string, chaincodeParams []string) ([]byte, error) {
+	sigMsgArray := s.toArray(txid, chaincodeName, chaincodeFunctionName, chaincodeParams)
 	sigMsg, err := s.encode(sigMsgArray)
 	if err != nil {
 		return nil, err
@@ -22,8 +22,9 @@ func (s *SigMsgGenerator) GenerateSigMsg(chaincodeName string, chaincodeFunction
 	return sigMsg, nil
 }
 
-func (s *SigMsgGenerator) toArray(chaincodeName string, chaincodeFunctionName string, chaincodeParams []string) []interface{} {
+func (s *SigMsgGenerator) toArray(txid, chaincodeName, chaincodeFunctionName string, chaincodeParams []string) []interface{} {
 	var sigMsgArr []interface{}
+	sigMsgArr = append(sigMsgArr, []byte(txid))
 	sigMsgArr = append(sigMsgArr, []byte(chaincodeName))
 	sigMsgArr = append(sigMsgArr, []byte(chaincodeFunctionName))
 	for _, param := range chaincodeParams {

@@ -150,7 +150,7 @@ func CallerChaincodeName(stub shim.ChaincodeStubInterface) (string, error) {
 	return cis.ChaincodeSpec.ChaincodeId.Name, nil
 }
 
-func SigVerifyAndSignerAddress(srcHexSig string, chaincodeName string, chaincodeMethodName string, args []string) (*types.Address, error) {
+func SigVerifyAndSignerAddress(txid string, srcHexSig string, chaincodeName string, chaincodeMethodName string, args []string) (*types.Address, error) {
 
 	fmt.Println("srcHexSig: ", srcHexSig)
 	fmt.Println("chaincodeName: ", chaincodeName)
@@ -160,7 +160,7 @@ func SigVerifyAndSignerAddress(srcHexSig string, chaincodeName string, chaincode
 	}
 
 	sigMsgGenerator := generator.NewSigMsgGenerator()
-	sigMsg, err := sigMsgGenerator.GenerateSigMsg(chaincodeName, chaincodeMethodName, args)
+	sigMsg, err := sigMsgGenerator.GenerateSigMsg(txid, chaincodeName, chaincodeMethodName, args)
 	if err != nil {
 		return nil, err
 	}
@@ -186,5 +186,5 @@ func SigVerifyAndSignerAddressFromTxContext(ctx contractapi.TransactionContextIn
 		return nil, fmt.Errorf("failed to get caller chaincode name: %w", err)
 	}
 
-	return SigVerifyAndSignerAddress(sig, callerChaincodeName, chaincodeMethodName, args)
+	return SigVerifyAndSignerAddress(ctx.GetStub().GetTxID(), sig, callerChaincodeName, chaincodeMethodName, args)
 }
