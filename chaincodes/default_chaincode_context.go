@@ -48,11 +48,12 @@ func (bc *DefaultChaincodeContext) GetSignerAddress(ctx contractapi.TransactionC
 		return nil, err
 	}
 
-	return bc.SignerAddress(sig, chaincodeName, methodName, methodParams)
+	txid := ctx.GetStub().GetTxID()
+	return bc.SignerAddress(txid, sig, chaincodeName, methodName, methodParams)
 }
 
-func (bc *DefaultChaincodeContext) SignerAddress(sig string, chaincodeName string, methodName string, methodParams []string) (*types.Address, error) {
-	return fabric.SigVerifyAndSignerAddress(sig, chaincodeName, methodName, methodParams)
+func (bc *DefaultChaincodeContext) SignerAddress(txid string, sig string, chaincodeName string, methodName string, methodParams []string) (*types.Address, error) {
+	return fabric.SigVerifyAndSignerAddress(txid, sig, chaincodeName, methodName, methodParams)
 }
 
 func (bc *DefaultChaincodeContext) SetEvent(ctx contractapi.TransactionContextInterface, event interface{}) error {
