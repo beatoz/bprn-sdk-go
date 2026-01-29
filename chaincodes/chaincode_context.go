@@ -12,7 +12,7 @@ type ChaincodeContextInterface interface {
 	InvokeChaincode(ctx contractapi.TransactionContextInterface, chaincodeName string, methodName string, methodArgs []string) *peer.Response
 	CallerChaincodeName(ctx contractapi.TransactionContextInterface) (string, error)
 	GetSignerAddress(ctx contractapi.TransactionContextInterface, selfNamedCc *SelfNamedChaincode, sig string, methodName string, methodParams []string) (*types.Address, error)
-	SignerAddress(sig string, chaincodeName string, methodName string, methodParams []string) (*types.Address, error)
+	SignerAddress(txid string, sig string, chaincodeName string, methodName string, methodParams []string) (*types.Address, error)
 	SetEvent(ctx contractapi.TransactionContextInterface, event interface{}) error
 	IsSameChainId(ctx contractapi.TransactionContextInterface, targetChainId string) error
 }

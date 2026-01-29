@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/rlp"
@@ -14,7 +15,10 @@ func NewSigMsgGenerator() *SigMsgGenerator {
 }
 
 func (s *SigMsgGenerator) GenerateSigMsg(txid, chaincodeName, chaincodeFunctionName string, chaincodeParams []string) ([]byte, error) {
-	sigMsgArray := s.toArray(txid, chaincodeName, chaincodeFunctionName, chaincodeParams)
+	sigMsgArray, err := s.toArray(txid, chaincodeName, chaincodeFunctionName, chaincodeParams)
+	if err != nil {
+		return nil, err
+	}
 	sigMsg, err := s.encode(sigMsgArray)
 	if err != nil {
 		return nil, err
@@ -22,15 +26,19 @@ func (s *SigMsgGenerator) GenerateSigMsg(txid, chaincodeName, chaincodeFunctionN
 	return sigMsg, nil
 }
 
-func (s *SigMsgGenerator) toArray(txid, chaincodeName, chaincodeFunctionName string, chaincodeParams []string) []interface{} {
+func (s *SigMsgGenerator) toArray(txid, chaincodeName, chaincodeFunctionName string, chaincodeParams []string) ([]interface{}, error) {
 	var sigMsgArr []interface{}
-	sigMsgArr = append(sigMsgArr, []byte(txid))
+	txidBytes, err := hex.DecodeString(txid)
+	if err != nil {
+		return nil, err
+	}
+	sigMsgArr = append(sigMsgArr, txidBytes)
 	sigMsgArr = append(sigMsgArr, []byte(chaincodeName))
 	sigMsgArr = append(sigMsgArr, []byte(chaincodeFunctionName))
 	for _, param := range chaincodeParams {
 		sigMsgArr = append(sigMsgArr, []byte(param))
 	}
-	return sigMsgArr
+	return sigMsgArr, nil
 }
 
 func (s *SigMsgGenerator) encode(sigMsgArr []interface{}) ([]byte, error) {
