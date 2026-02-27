@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package event;
+
+option go_package = "github.com/beatoz/bprn-sdk-go/chaincodes/event";
+
+message EventLogHeaderProto {
+  string channel_id = 1;
+  string chaincode_name = 2;
+  string tx_id = 3;
+}
+
+message EventLogProto {
+  EventLogHeaderProto header = 1;
+  repeated bytes  elems    = 2;
+}
