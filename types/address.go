@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+var (
+	addrWithPrefixRegex    = regexp.MustCompile(`^0x[a-f0-9]{40}$`)
+	addrWithoutPrefixRegex = regexp.MustCompile(`^[a-f0-9]{40}$`)
+)
+
 type Address struct {
 	address string
 }
@@ -19,7 +24,7 @@ func NewAddress(hexAddr string) (*Address, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Address{address: strings.ToLower(normalized)}, nil
+	return &Address{address: normalized}, nil
 }
 
 func NewChaincodeAddress(channelName string, chaincodeName string) (*Address, error) {
@@ -30,18 +35,18 @@ func NewChaincodeAddress(channelName string, chaincodeName string) (*Address, er
 
 func validateAddress(hexAddress string) (string, error) {
 	if hexAddress == "" {
-		return "", errors.New("Address cannot be empty")
+		return "", errors.New("address cannot be empty")
 	}
 
 	lower := strings.ToLower(hexAddress)
 
 	// 0x + 40 hex
-	if matched, _ := regexp.MatchString(`^0x[a-f0-9]{40}$`, lower); matched {
+	if addrWithPrefixRegex.MatchString(lower) {
 		return lower[2:], nil // strip "0x"
 	}
 
 	// 40 hex (no prefix)
-	if matched, _ := regexp.MatchString(`^[a-f0-9]{40}$`, lower); matched {
+	if addrWithoutPrefixRegex.MatchString(lower) {
 		return lower, nil
 	}
 
