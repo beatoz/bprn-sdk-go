@@ -34,7 +34,7 @@ func TestCodec(t *testing.T) {
 	evtLog0, err := UnmarshalEventLog(bz)
 	require.NoError(t, err)
 	require.Equal(t, evtLog.Header.ChannelId, evtLog0.Header.ChannelId)
-	require.Equal(t, evtLog.Header.ChaincodeName, evtLog0.Header.ChaincodeName)
+	require.Equal(t, evtLog.Header.ChaincodeId, evtLog0.Header.ChaincodeId)
 	require.Equal(t, evtLog.Header.TxId, evtLog0.Header.TxId)
 	require.Equal(t, len(evtLog.Elems), len(evtLog0.Elems))
 	for i := 0; i < len(evtLog.Elems); i++ {

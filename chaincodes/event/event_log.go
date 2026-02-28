@@ -18,7 +18,7 @@ func (x *EventLogHeaderProto) Leaf(i int) []byte {
 func (x *EventLogHeaderProto) Leaves() [][]byte {
 	return [][]byte{
 		[]byte(x.ChannelId),
-		[]byte(x.ChaincodeName),
+		[]byte(x.ChaincodeId),
 		[]byte(x.TxId),
 	}
 }
@@ -32,19 +32,10 @@ type EventLog struct {
 	tree *merkle.MerkleTree
 }
 
-func NewEventLog(channelId, chaincodeName, txId string) *EventLog {
+func NewEventLog(channelId, chaincodeId, txId string) *EventLog {
 	return &EventLog{
-		EventLogProto: &EventLogProto{Header: &EventLogHeaderProto{ChannelId: channelId, ChaincodeName: chaincodeName, TxId: txId}},
+		EventLogProto: &EventLogProto{Header: &EventLogHeaderProto{ChannelId: channelId, ChaincodeId: chaincodeId, TxId: txId}},
 	}
-}
-
-// EventLogProto
-func (log *EventLog) LeavesLen() int {
-	return log.Header.LeavesLen() + len(log.Elems)
-}
-
-func (log *EventLog) Leaves() [][]byte {
-	return append(log.Header.Leaves(), log.Elems...)
 }
 
 func (log *EventLog) Leaf(gidx int) []byte {
@@ -56,6 +47,14 @@ func (log *EventLog) Leaf(gidx int) []byte {
 	}
 	gidx -= log.Header.LeavesLen()
 	return log.Elems[gidx]
+}
+
+func (log *EventLog) Leaves() [][]byte {
+	return append(log.Header.Leaves(), log.Elems...)
+}
+
+func (log *EventLog) LeavesLen() int {
+	return log.Header.LeavesLen() + len(log.Elems)
 }
 
 var _ merkle.ILeaves = (*EventLog)(nil)
