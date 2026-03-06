@@ -1,4 +1,4 @@
-package event
+package samples
 
 import (
 	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
