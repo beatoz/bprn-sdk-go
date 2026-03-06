@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
+	"github.com/beatoz/bprn-sdk-go/chaincodes/event/samples"
 	"github.com/stretchr/testify/require"
 )
 
@@ -13,7 +14,7 @@ var evtLog *EventLog
 func init() {
 	evtLog = NewEventLog("channelId", "chaincodeName", "txId")
 	for i := 0; i < 10; i++ {
-		logVal := &PostMessageEventLog{
+		logVal := &samples.PostMessageEventLog{
 			SrcChainId: fmt.Sprintf("srcChainId-%d", i),
 			SrcDappId:  fmt.Sprintf("srcDappId-%d", i),
 			SrcAcctId:  fmt.Sprintf("srcAcctId-%d", i),

@@ -1,4 +1,4 @@
-package event
+package samples
 
 import (
 	"encoding/binary"
