@@ -44,20 +44,32 @@ log.AddLeaves(data)
 
 #### 3. Marshal and Unmarshal
 
-`MarshalEventLog` 함수를 사용하여 이벤트 로그를 바이트 스트림으로 인코딩하고, `UnmarshalEventLog` 함수를 사용하여 디코딩한다.
+`MarshalDER` 메서드를 사용하여 이벤트 로그를 DER(ASN.1) 형식의 바이트 스트림으로 인코딩하고, `UnmarshalDER` 메서드를 사용하여 디코딩한다.
 
 ```go
 // Marshal
-data, err := event.MarshalEventLog(log)
+data, err := log.MarshalDER()
 if err != nil {
     // handle error
 }
 
 // Unmarshal
-newLog, err := event.UnmarshalEventLog(data)
+newLog := &event.EventLog{}
+err = newLog.UnmarshalDER(data)
 if err != nil {
     // handle error
 }
+```
+
+`onlyElems` 옵션을 사용하면 Header를 제외하고 Elems만 인코딩/디코딩할 수 있다.
+
+```go
+// Marshal only Elems
+data, err := log.MarshalDER(true)
+
+// Unmarshal only Elems
+newLog := &event.EventLog{}
+err = newLog.UnmarshalDER(data, true)
 ```
 
 #### 4. Merkle Tree
