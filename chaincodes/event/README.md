@@ -44,20 +44,32 @@ log.AddLeaves(data)
 
 #### 3. Marshal and Unmarshal
 
-`MarshalEventLog` 함수를 사용하여 이벤트 로그를 바이트 스트림으로 인코딩하고, `UnmarshalEventLog` 함수를 사용하여 디코딩한다.
+`MarshalDER` 메서드를 사용하여 이벤트 로그를 DER(ASN.1) 형식의 바이트 스트림으로 인코딩하고, `UnmarshalDER` 메서드를 사용하여 디코딩한다.
 
 ```go
 // Marshal
-data, err := event.MarshalEventLog(log)
+data, err := log.MarshalDER()
 if err != nil {
     // handle error
 }
 
 // Unmarshal
-newLog, err := event.UnmarshalEventLog(data)
+newLog := &event.EventLog{}
+err = newLog.UnmarshalDER(data)
 if err != nil {
     // handle error
 }
+```
+
+`onlyElems` 옵션을 사용하면 Header를 제외하고 Elems만 인코딩/디코딩할 수 있다.
+
+```go
+// Marshal only Elems
+data, err := log.MarshalDER(true)
+
+// Unmarshal only Elems
+newLog := &event.EventLog{}
+err = newLog.UnmarshalDER(data, true)
 ```
 
 #### 4. Merkle Tree
@@ -73,14 +85,14 @@ root := log.Root()
 
 **Generate Merkle Proof:**
 
-`EventLog`의 리프 인덱스는 **Global Index**를 사용해야 한다.
-Global Index는 Header의 리프들(ChannelId, ChaincodeName, TxId)과 추가된 데이터 리프들을 순서대로 포함한다.
+`EventLog`의 리프 인덱스는 **Global Index (gidx)**를 사용 한다.
+Global Index는 Header의 리프들(ChannelId, ChaincodeName, TxId)과 추가된 상태에서의 인덱스를 의미한다.
 
-1. ChannelId (Index 0)
-2. ChaincodeName (Index 1)
-3. TxId (Index 2)
-4. Added Leaf 1 (Index 3)
-5. Added Leaf 2 (Index 4)
+1. ChannelId (gidx 0)
+2. ChaincodeName (gidx 1)
+3. TxId (gidx 2)
+4. Added Leaf 1 (gidx 3)
+5. Added Leaf 2 (gidx 4)
 ...
 
 ```go
@@ -101,4 +113,70 @@ if err == nil {
 } else {
     // Proof is invalid
 }
+```
+
+#### 5. Custom event element Implementation
+
+`merkle.ILeaves` 인터페이스를 구현하여 애플리케이션에 맞는 커스텀 이벤트 요소 타입을 정의할 수 있다.
+각 필드가 머클 트리의 개별 리프가 되므로, 필드 단위로 독립적인 포함 증명이 가능하다.
+
+`merkle.ILeaves` 인터페이스를 구현한 타입은 `EventLog.AddLeaves()` 메서드를 통해 이벤트 로그에 추가할 수 있다.
+
+##### ILeaves 인터페이스
+
+```go
+type ILeaves interface {
+    Leaf(i int) []byte
+    Leaves() [][]byte
+    LeavesLen() int
+}
+```
+
+| 메서드 | 설명 | 구현 내용 |
+|--------|------|-----------|
+| `Leaf(i int) []byte` | i번째 리프 데이터를 반환한다. | 범위를 초과하면 `nil`을 반환하고, 유효하면 `Leaves()[i]`를 반환한다. |
+| `Leaves() [][]byte` | 전체 필드를 `[]byte` 슬라이스로 반환한다. | 각 필드를 `[]byte`로 변환하여 슬라이스로 구성한다. 슬라이스 내 순서가 Global Index에 직접 매핑되므로 순서를 고정해야 한다. |
+| `LeavesLen() int` | 리프 개수를 반환한다. | `len(Leaves())`를 반환한다. |
+
+##### Example - TransferEventLog
+
+`samples/transer.go` 에 구현된 토큰 전송 이벤트 예시이다. 4개의 필드가 각각 하나의 리프가 된다.
+그 외 구현 예시는 `samples/` 디렉토리를 참고한다.
+
+```go
+package samples
+
+import (
+    "github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
+    "github.com/holiman/uint256"
+)
+
+type TransferEventLog struct {
+    From   []byte
+    To     []byte
+    Amount *uint256.Int
+    Memo   []byte
+}
+
+func (s *TransferEventLog) Leaf(i int) []byte {
+    if i >= s.LeavesLen() {
+        return nil
+    }
+    return s.Leaves()[i]
+}
+
+func (s *TransferEventLog) Leaves() [][]byte {
+    return [][]byte{
+        s.From,
+        s.To,
+        s.Amount.Bytes(),
+        s.Memo,
+    }
+}
+
+func (s *TransferEventLog) LeavesLen() int {
+    return len(s.Leaves())
+}
+
+var _ merkle.ILeaves = (*TransferEventLog)(nil)
 ```

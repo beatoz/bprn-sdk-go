@@ -1,4 +1,4 @@
-package event
+package samples
 
 import (
 	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
@@ -6,10 +6,10 @@ import (
 )
 
 type TransferEventLog struct {
-	From   []byte
-	To     []byte
-	Amount *uint256.Int
-	Memo   []byte
+	From   []byte       // gindex 3
+	To     []byte       // gindex 4
+	Amount *uint256.Int // gindex 5
+	Memo   []byte       // gindex 6
 }
 
 func (s *TransferEventLog) Leaf(i int) []byte {

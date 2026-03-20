@@ -1,50 +1,49 @@
 package event
 
 import (
+	"encoding/asn1"
 	"errors"
 
 	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
-	"google.golang.org/protobuf/proto"
 )
 
-// EventLogHeaderProto
-func (x *EventLogHeaderProto) Leaf(i int) []byte {
+type eventLogHeader struct {
+	ChannelId   string `json:"channel_id"`
+	ChaincodeId string `json:"chaincode_id"`
+	TxId        string `json:"tx_id"`
+}
+
+func (x *eventLogHeader) Leaf(i int) []byte {
 	if x.LeavesLen() <= i {
 		return nil
 	}
 	return x.Leaves()[i]
 }
 
-func (x *EventLogHeaderProto) Leaves() [][]byte {
+func (x *eventLogHeader) Leaves() [][]byte {
 	return [][]byte{
 		[]byte(x.ChannelId),
-		[]byte(x.ChaincodeName),
+		[]byte(x.ChaincodeId),
 		[]byte(x.TxId),
 	}
 }
 
-func (x *EventLogHeaderProto) LeavesLen() int {
+func (x *eventLogHeader) LeavesLen() int {
 	return len(x.Leaves())
 }
 
+var _ merkle.ILeaves = (*eventLogHeader)(nil)
+
 type EventLog struct {
-	*EventLogProto
-	tree *merkle.MerkleTree
+	Header *eventLogHeader `json:"header"`
+	Elems  [][]byte        `json:"elems"`
+	tree   *merkle.MerkleTree
 }
 
-func NewEventLog(channelId, chaincodeName, txId string) *EventLog {
+func NewEventLog(channelId, chaincodeId, txId string) *EventLog {
 	return &EventLog{
-		EventLogProto: &EventLogProto{Header: &EventLogHeaderProto{ChannelId: channelId, ChaincodeName: chaincodeName, TxId: txId}},
+		Header: &eventLogHeader{ChannelId: channelId, ChaincodeId: chaincodeId, TxId: txId},
 	}
-}
-
-// EventLogProto
-func (log *EventLog) LeavesLen() int {
-	return log.Header.LeavesLen() + len(log.Elems)
-}
-
-func (log *EventLog) Leaves() [][]byte {
-	return append(log.Header.Leaves(), log.Elems...)
 }
 
 func (log *EventLog) Leaf(gidx int) []byte {
@@ -56,6 +55,14 @@ func (log *EventLog) Leaf(gidx int) []byte {
 	}
 	gidx -= log.Header.LeavesLen()
 	return log.Elems[gidx]
+}
+
+func (log *EventLog) Leaves() [][]byte {
+	return append(log.Header.Leaves(), log.Elems...)
+}
+
+func (log *EventLog) LeavesLen() int {
+	return log.Header.LeavesLen() + len(log.Elems)
 }
 
 var _ merkle.ILeaves = (*EventLog)(nil)
@@ -109,16 +116,57 @@ func (log *EventLog) Reset() {
 	log.tree = nil
 }
 
-func MarshalEventLog(log *EventLog) ([]byte, error) {
-	return proto.Marshal(log.EventLogProto)
+type derEventLog struct {
+	ChannelId   string
+	ChaincodeId string
+	TxId        string
+	Elems       []asn1.RawValue
 }
 
-func UnmarshalEventLog(data []byte) (*EventLog, error) {
-	unmarshalled := &EventLog{
-		EventLogProto: &EventLogProto{},
+func (log *EventLog) MarshalDER(onlyElems ...bool) ([]byte, error) {
+	if len(onlyElems) > 0 && onlyElems[0] {
+		return asn1.Marshal(log.Elems)
 	}
-	if err := proto.Unmarshal(data, unmarshalled.EventLogProto); err != nil {
-		return nil, err
+	d := derEventLog{
+		ChannelId:   log.Header.ChannelId,
+		ChaincodeId: log.Header.ChaincodeId,
+		TxId:        log.Header.TxId,
 	}
-	return unmarshalled, nil
+	for _, e := range log.Elems {
+		d.Elems = append(d.Elems, asn1.RawValue{
+			Class: asn1.ClassUniversal,
+			Tag:   asn1.TagOctetString,
+			Bytes: e,
+		})
+	}
+	return asn1.Marshal(d)
+}
+
+func (log *EventLog) UnmarshalDER(data []byte, onlyElems ...bool) error {
+	if len(onlyElems) > 0 && onlyElems[0] {
+		var elems [][]byte
+		_, err := asn1.Unmarshal(data, &elems)
+		if err != nil {
+			return err
+		}
+		log.Elems = elems
+		log.tree = nil
+		return nil
+	}
+	var d derEventLog
+	_, err := asn1.Unmarshal(data, &d)
+	if err != nil {
+		return err
+	}
+	log.Header = &eventLogHeader{
+		ChannelId:   d.ChannelId,
+		ChaincodeId: d.ChaincodeId,
+		TxId:        d.TxId,
+	}
+	log.Elems = nil
+	for _, raw := range d.Elems {
+		log.Elems = append(log.Elems, raw.Bytes)
+	}
+	log.tree = nil
+	return nil
 }
