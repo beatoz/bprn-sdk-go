@@ -14,33 +14,32 @@ type MerkleTree struct {
 	leafCount int
 }
 
-type optFunc func() [][]byte
+type OptFunc func() ([][]byte, bool)
 
-func WithILeaves(leaves ILeaves) func() [][]byte {
-	return func() [][]byte {
-		return leaves.Leaves()
+func WithILeaves(leaves ILeaves) OptFunc {
+	return func() ([][]byte, bool) {
+		return leaves.Leaves(), false
 	}
 }
 
-func WithData(leaves [][]byte) func() [][]byte {
-	return func() [][]byte {
-		return leaves
+func WithRawLeaves(leaves [][]byte) OptFunc {
+	return func() ([][]byte, bool) {
+		return leaves, false
 	}
 }
 
-func NewMerkleTree(opt optFunc) *MerkleTree {
-	return newMerkleTree(opt())
+func WithHashedLeaves(leaves [][]byte) OptFunc {
+	return func() ([][]byte, bool) {
+		return leaves, true
+	}
 }
 
-func newMerkleTree(leaves [][]byte) *MerkleTree {
-	hashing := false
-	for _, leaf := range leaves {
-		if len(leaf) != sha256.Size {
-			hashing = true
-			break
-		}
-	}
+func NewMerkleTree(opt OptFunc) *MerkleTree {
+	leaves, preHashed := opt()
+	return newMerkleTree(leaves, preHashed)
+}
 
+func newMerkleTree(leaves [][]byte, preHashed bool) *MerkleTree {
 	leafCount := nextPowerOf2(len(leaves))
 	tree := &MerkleTree{
 		nodes:     make([][]byte, leafCount*2), // 1-indexed, nodes[0] is unused
@@ -49,11 +48,11 @@ func newMerkleTree(leaves [][]byte) *MerkleTree {
 
 	// populate leaves
 	for i, leaf := range leaves {
-		if hashing {
+		if preHashed {
+			tree.nodes[leafCount+i] = leaf
+		} else {
 			h := sha256.Sum256(leaf)
 			tree.nodes[leafCount+i] = h[:]
-		} else {
-			tree.nodes[leafCount+i] = leaf
 		}
 	}
 	// remaining leaf slots are nil
@@ -92,14 +91,14 @@ func (t *MerkleTree) Proof(index int) ([]byte, [][]byte, error) {
 }
 
 // VerifyProof verifies that data at the given index is part of the tree with the given root.
-// If data is not 32 bytes, it is hashed first (same logic as tree construction).
-func VerifyProof(index int, data []byte, siblings [][]byte, root []byte) error {
+// If preHashed is true, data is used as-is; otherwise it is hashed first.
+func VerifyProof(index int, data []byte, siblings [][]byte, root []byte, preHashed ...bool) error {
 	var leafHash []byte
-	if len(data) != sha256.Size {
+	if len(preHashed) > 0 && preHashed[0] {
+		leafHash = data
+	} else {
 		h := sha256.Sum256(data)
 		leafHash = h[:]
-	} else {
-		leafHash = data
 	}
 
 	current := leafHash
