@@ -16,7 +16,7 @@ Hyperledger Fabric (HLF) 은 트랜잭션에 오직 하나의 이벤트만이 �
 `NewEventLog` 함수를 사용하여 이벤트 로그를 생성한다.
 
 ```go
-log := event.NewEventLog("channel-id", "chaincode-name", "tx-id")
+log := event.NewEventLog("channel-id", "chaincode-name", "tx-id", selector)
 ```
 
 #### 2. Add Event Data
@@ -86,13 +86,14 @@ root := log.Root()
 **Generate Merkle Proof:**
 
 `EventLog`의 리프 인덱스는 **Global Index (gidx)**를 사용 한다.
-Global Index는 Header의 리프들(ChannelId, ChaincodeName, TxId)과 추가된 상태에서의 인덱스를 의미한다.
+Global Index는 Header의 리프들(ChannelId, ChaincodeId, TxId, Selector)과 추가된 상태에서의 인덱스를 의미한다.
 
 1. ChannelId (gidx 0)
-2. ChaincodeName (gidx 1)
+2. ChaincodeId (gidx 1)
 3. TxId (gidx 2)
-4. Added Leaf 1 (gidx 3)
-5. Added Leaf 2 (gidx 4)
+4. Selector (gidx 3)
+5. Added Leaf 1 (gidx 4)
+6. Added Leaf 2 (gidx 5)
 ...
 
 ```go

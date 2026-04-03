@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math/bits"
+
+	"github.com/beatoz/bprn-sdk-go/chaincodes/event/types"
 )
 
 // MerkleTree is an array-based complete binary tree.
@@ -16,7 +18,7 @@ type MerkleTree struct {
 
 type OptFunc func() ([][]byte, bool)
 
-func WithILeaves(leaves ILeaves) OptFunc {
+func WithILeaves(leaves types.ILeaves) OptFunc {
 	return func() ([][]byte, bool) {
 		return leaves.Leaves(), false
 	}

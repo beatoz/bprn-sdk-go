@@ -1,4 +1,4 @@
-package merkle
+package types
 
 type IMerkleProvable interface {
 	Root() []byte
