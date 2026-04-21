@@ -26,7 +26,8 @@ var txId = make([]byte, 32)
 
 func init() {
 	_, _ = rand.Read(txId)
-	evtLog = NewEventLog("channelId", "chaincodeName", txId)
+	evtLog = NewEventLog(
+		WithChannelId("channelId"), WithChaincodeId("chaincodeName"), WithTxId(txId))
 	evtLog.SetElems(postMsgLog)
 }
 

@@ -15,6 +15,30 @@ type eventLogHeader struct {
 	Selector    []byte `json:"selector"`
 }
 
+func WithChannelId(channelId string) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.ChannelId = channelId
+	}
+}
+
+func WithChaincodeId(ccId string) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.ChaincodeId = ccId
+	}
+}
+
+func WithTxId(txId []byte) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.TxId = txId
+	}
+}
+
+func WithSelector(selector []byte) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.Selector = selector
+	}
+}
+
 func (x *eventLogHeader) Leaf(i int) []byte {
 	if x.LeavesLen() <= i {
 		return nil
@@ -43,10 +67,14 @@ type EventLog struct {
 	tree   *merkle.MerkleTree
 }
 
-func NewEventLog(channelId, chaincodeId string, txId []byte) *EventLog {
-	return &EventLog{
-		Header: &eventLogHeader{ChannelId: channelId, ChaincodeId: chaincodeId, TxId: txId},
+func NewEventLog(opt ...func(*EventLog)) *EventLog {
+	evtlog := &EventLog{
+		Header: &eventLogHeader{},
 	}
+	for _, f := range opt {
+		f(evtlog)
+	}
+	return evtlog
 }
 
 func (log *EventLog) Leaf(gidx int) []byte {
