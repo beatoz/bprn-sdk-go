@@ -43,10 +43,36 @@ type EventLog struct {
 	tree   *merkle.MerkleTree
 }
 
-func NewEventLog(channelId, chaincodeId string, txId []byte) *EventLog {
-	return &EventLog{
-		Header: &eventLogHeader{ChannelId: channelId, ChaincodeId: chaincodeId, TxId: txId},
+func withChannelId(channelId string) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.ChannelId = channelId
 	}
+}
+
+func withChaincodeId(ccId string) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.ChaincodeId = ccId
+	}
+}
+
+func withTxId(txId []byte) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.TxId = txId
+	}
+}
+
+func withSelector(selector []byte) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.Selector = selector
+	}
+}
+
+func NewEventLog(opt ...func(*EventLog)) *EventLog {
+	evtlog := &EventLog{}
+	for _, f := range opt {
+		f(evtlog)
+	}
+	return evtlog
 }
 
 func (log *EventLog) Leaf(gidx int) []byte {
