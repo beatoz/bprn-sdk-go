@@ -11,7 +11,7 @@ import (
 type eventLogHeader struct {
 	ChannelId   string `json:"channel_id"`
 	ChaincodeId string `json:"chaincode_id"`
-	TxId        string `json:"tx_id"`
+	TxId        []byte `json:"tx_id"`
 	Selector    []byte `json:"selector"`
 }
 
@@ -26,7 +26,7 @@ func (x *eventLogHeader) Leaves() [][]byte {
 	return [][]byte{
 		[]byte(x.ChannelId),
 		[]byte(x.ChaincodeId),
-		[]byte(x.TxId),
+		x.TxId,
 		x.Selector,
 	}
 }
@@ -43,7 +43,7 @@ type EventLog struct {
 	tree   *merkle.MerkleTree
 }
 
-func NewEventLog(channelId, chaincodeId, txId string) *EventLog {
+func NewEventLog(channelId, chaincodeId string, txId []byte) *EventLog {
 	return &EventLog{
 		Header: &eventLogHeader{ChannelId: channelId, ChaincodeId: chaincodeId, TxId: txId},
 	}
@@ -113,7 +113,7 @@ func (log *EventLog) Reset() {
 type derEventLog struct {
 	ChannelId   string
 	ChaincodeId string
-	TxId        string
+	TxId        []byte
 	Selector    []byte
 	Elems       []asn1.RawValue
 }

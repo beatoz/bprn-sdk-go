@@ -1,6 +1,7 @@
 package event
 
 import (
+	"crypto/rand"
 	"testing"
 
 	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
@@ -21,8 +22,11 @@ var postMsgLog = &samples.PostMessageEventElems{
 	MsgPayload: []byte("hello world-0"),
 }
 
+var txId = make([]byte, 32)
+
 func init() {
-	evtLog = NewEventLog("channelId", "chaincodeName", "txId")
+	_, _ = rand.Read(txId)
+	evtLog = NewEventLog("channelId", "chaincodeName", txId)
 	evtLog.SetElems(postMsgLog)
 }
 
@@ -65,7 +69,7 @@ func TestMerkleProof(t *testing.T) {
 	_, siblings, err = evtLog.Proof(gidx)
 	require.NoError(t, err)
 	require.NoError(t, evtLog.VerifyProof(gidx, siblings))
-	require.NoError(t, merkle.VerifyProof(gidx, []byte("txId"), siblings, evtLogRoot))
+	require.NoError(t, merkle.VerifyProof(gidx, txId, siblings, evtLogRoot))
 
 	gidx++ // selector
 	_, siblings, err = evtLog.Proof(gidx)
