@@ -40,7 +40,7 @@ func WithSelector(selector []byte) func(x *EventLog) {
 }
 
 func (x *eventLogHeader) Leaf(i int) []byte {
-	if x.LeavesLen() <= i {
+	if i < 0 || x.LeavesLen() <= i {
 		return nil
 	}
 	return x.Leaves()[i]
@@ -78,7 +78,7 @@ func NewEventLog(opt ...func(*EventLog)) *EventLog {
 }
 
 func (log *EventLog) Leaf(gidx int) []byte {
-	if gidx >= log.LeavesLen() {
+	if gidx < 0 || gidx >= log.LeavesLen() {
 		return nil
 	}
 	if gidx < log.Header.LeavesLen() {
@@ -98,31 +98,34 @@ func (log *EventLog) LeavesLen() int {
 
 var _ types.ILeaves = (*EventLog)(nil)
 
+func (log *EventLog) buildMerkleTree() *merkle.MerkleTree {
+	if log.tree == nil {
+		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
+	}
+	return log.tree
+}
+
 func (log *EventLog) Root() []byte {
-	if log.tree == nil {
-		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
-	}
-	return log.tree.Root()
+	return log.buildMerkleTree().Root()
 }
 
-func (log *EventLog) Proof(gidx int) ([]byte, [][]byte, error) {
-	if gidx >= log.LeavesLen() {
-		return nil, nil, errors.New("index out of range")
+func (log *EventLog) Proof(gidx int) (*types.MerkleProof, error) {
+	if gidx < 0 || gidx >= log.LeavesLen() {
+		return nil, errors.New("index out of range")
 	}
-	if log.tree == nil {
-		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
+	tree := log.buildMerkleTree()
+	if tree == nil {
+		return nil, errors.New("failed to build merkle tree")
 	}
-	return log.tree.Proof(gidx)
+	return tree.Proof(gidx)
 }
 
-func (log *EventLog) VerifyProof(gidx int, siblings [][]byte) error {
-	if gidx >= log.LeavesLen() {
-		return errors.New("index out of range")
+func (log *EventLog) VerifyProof(proof *types.MerkleProof) error {
+	tree := log.buildMerkleTree()
+	if tree == nil {
+		return errors.New("failed to build merkle tree")
 	}
-	if log.tree == nil {
-		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
-	}
-	return merkle.VerifyProof(gidx, log.Leaves()[gidx], siblings, log.tree.Root())
+	return merkle.VerifyProof(proof, tree.Root())
 }
 
 var _ types.IMerkleProvable = (*EventLog)(nil)
