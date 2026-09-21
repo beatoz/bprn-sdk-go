@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/beatoz/bprn-sdk-go/chaincodes/event/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +21,8 @@ func TestSpecVector_Tree(t *testing.T) {
 		4: "022a6979e6dab7aa5ae4c3e5e45f7e977112a7e63593820dbec1ec738a24f93c",
 		5: "57eb35615d47f34ec714cacdf5fd74608a5e8e102724e80b24b287c0c27b6a31",
 		6: "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d", // NULL_HASH
-		7: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", // EMPTY_HASH
+		7: "e3b0c44298fc1c149afbf4c8996fb92427" +
+			"ae41e4649b934ca495991b7852b855", // EMPTY_HASH
 	}
 	for i, hexWant := range want {
 		require.Equal(t, hexWant, hex.EncodeToString(tree.nodes[i]), "nodes[%d]", i)
@@ -35,17 +35,16 @@ func TestSpecVector_Proof(t *testing.T) {
 	leaves := [][]byte{{0x61}, {0x62}, nil}
 	tree := NewMerkleTree(WithRawLeaves(leaves))
 
-	proof, err := tree.Proof(1)
+	leaf, siblings, err := tree.Proof(1)
 	require.NoError(t, err)
-	require.Equal(t, 1, proof.Index)
-	require.Equal(t, []byte{0x62}, proof.Leaf)
-	require.Len(t, proof.Siblings, 2)
+	require.Equal(t, []byte{0x62}, leaf)
+	require.Len(t, siblings, 2)
 	require.Equal(t, "022a6979e6dab7aa5ae4c3e5e45f7e977112a7e63593820dbec1ec738a24f93c",
-		hex.EncodeToString(proof.Siblings[0]))
+		hex.EncodeToString(siblings[0]))
 	require.Equal(t, "8c35feba66fbe78ac0ead640353127fa1bfe1c20c64b4ab6ce2ee56418828f0e",
-		hex.EncodeToString(proof.Siblings[1]))
+		hex.EncodeToString(siblings[1]))
 
-	require.NoError(t, VerifyProof(proof, tree.Root()))
+	require.NoError(t, VerifyProof(1, leaf, siblings, tree.Root()))
 }
 
 // TestNewMerkleTree_RawData tests tree construction with arbitrary leaf data.
@@ -113,21 +112,21 @@ func TestProof_Valid(t *testing.T) {
 	tree := NewMerkleTree(WithRawLeaves(leaves))
 
 	for i, data := range leaves {
-		proof, err := tree.Proof(i)
+		leaf, siblings, err := tree.Proof(i)
 		require.NoError(t, err)
-		require.Equal(t, data, proof.Leaf)
-		require.NoError(t, VerifyProof(proof, tree.Root()))
+		require.Equal(t, data, leaf)
+		require.NoError(t, VerifyProof(i, leaf, siblings, tree.Root()))
 	}
 }
 
 // TestProof_OutOfRange tests that Proof rejects invalid indices, padding included.
 func TestProof_OutOfRange(t *testing.T) {
 	tree := NewMerkleTree(WithRawLeaves([][]byte{[]byte("a"), []byte("b"), []byte("c")}))
-	_, err := tree.Proof(-1)
+	_, _, err := tree.Proof(-1)
 	require.Error(t, err, "expected error for negative index")
-	_, err = tree.Proof(3)
+	_, _, err = tree.Proof(3)
 	require.Error(t, err, "expected error for the padding slot")
-	_, err = tree.Proof(4)
+	_, _, err = tree.Proof(4)
 	require.Error(t, err, "expected error for out of range index")
 }
 
@@ -135,43 +134,41 @@ func TestProof_OutOfRange(t *testing.T) {
 func TestVerify_WrongData(t *testing.T) {
 	leaves := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
 	tree := NewMerkleTree(WithRawLeaves(leaves))
-	proof, err := tree.Proof(0)
+	_, siblings, err := tree.Proof(0)
 	require.NoError(t, err)
 
-	proof.Leaf = []byte("fake")
-	require.Error(t, VerifyProof(proof, tree.Root()))
+	require.Error(t, VerifyProof(0, []byte("fake"), siblings, tree.Root()))
 }
 
 // TestVerify_WrongIndex tests that verification fails with an incorrect index.
 func TestVerify_WrongIndex(t *testing.T) {
 	leaves := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
 	tree := NewMerkleTree(WithRawLeaves(leaves))
-	proof, err := tree.Proof(0)
+	leaf, siblings, err := tree.Proof(0)
 	require.NoError(t, err)
 
-	proof.Index = 1
-	require.Error(t, VerifyProof(proof, tree.Root()))
+	require.Error(t, VerifyProof(1, leaf, siblings, tree.Root()))
 }
 
 // TestVerify_WrongRoot tests that verification fails against a different root.
 func TestVerify_WrongRoot(t *testing.T) {
 	leaves := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
 	tree := NewMerkleTree(WithRawLeaves(leaves))
-	proof, err := tree.Proof(0)
+	leaf, siblings, err := tree.Proof(0)
 	require.NoError(t, err)
 
-	require.Error(t, VerifyProof(proof, LeafHash([]byte("fake root"))))
+	require.Error(t, VerifyProof(0, leaf, siblings, LeafHash([]byte("fake root"))))
 }
 
 // TestVerify_TamperedProof tests that verification fails with a modified sibling.
 func TestVerify_TamperedProof(t *testing.T) {
 	leaves := [][]byte{[]byte("tx1"), []byte("tx2"), []byte("tx3"), []byte("tx4")}
 	tree := NewMerkleTree(WithRawLeaves(leaves))
-	proof, err := tree.Proof(0)
+	leaf, siblings, err := tree.Proof(0)
 	require.NoError(t, err)
 
-	proof.Siblings[0] = LeafHash([]byte("tampered"))
-	require.Error(t, VerifyProof(proof, tree.Root()))
+	siblings[0] = LeafHash([]byte("tampered"))
+	require.Error(t, VerifyProof(0, leaf, siblings, tree.Root()))
 }
 
 // TestSecurity_InternalNodeAsLeaf: a tree whose leaves are the internal nodes of
@@ -188,9 +185,9 @@ func TestSecurity_InternalNodeAsLeaf(t *testing.T) {
 
 	require.NotEqual(t, root, forgedTree.Root(), "VULNERABLE: internal nodes as leaves reproduce the root")
 
-	forgedProof, err := forgedTree.Proof(0)
+	forgedLeaf, forgedSiblings, err := forgedTree.Proof(0)
 	require.NoError(t, err)
-	require.Error(t, VerifyProof(forgedProof, root), "VULNERABLE: forged proof accepted")
+	require.Error(t, VerifyProof(0, forgedLeaf, forgedSiblings, root), "VULNERABLE: forged proof accepted")
 }
 
 // TestSecurity_ConcatenatedLeavesAsLeaf tests that concatenating two leaves
@@ -213,11 +210,10 @@ func TestSecurity_ForgedProofWithInternalNode(t *testing.T) {
 	root := tree.Root()
 
 	n1 := InnerHash(LeafHash(leaves[0]), LeafHash(leaves[1]))
-	proof, err := tree.Proof(0)
+	_, siblings, err := tree.Proof(0)
 	require.NoError(t, err)
 
-	proof.Leaf = n1
-	require.Error(t, VerifyProof(proof, root), "VULNERABLE: internal node accepted as leaf data")
+	require.Error(t, VerifyProof(0, n1, siblings, root), "VULNERABLE: internal node accepted as leaf data")
 }
 
 // TestSecurity_ShorterTreeDifferentRoot: a shallower tree built from the internal
@@ -235,10 +231,9 @@ func TestSecurity_ShorterTreeDifferentRoot(t *testing.T) {
 
 	for i, data := range leaves {
 		idx := i % tree2.LeafCount()
-		forgedProof, err := tree2.Proof(idx)
+		_, forgedSiblings, err := tree2.Proof(idx)
 		require.NoError(t, err)
-		forgedProof.Leaf = data
-		require.Error(t, VerifyProof(forgedProof, root),
+		require.Error(t, VerifyProof(idx, data, forgedSiblings, root),
 			fmt.Sprintf("VULNERABLE: shorter tree proof accepted for leaf[%d]", i))
 	}
 }
@@ -253,13 +248,13 @@ func TestSubtreeComposition(t *testing.T) {
 	parent := NewMerkleTree(WithRawLeaves([][]byte{sub1.Root(), sub2.Root()}))
 	require.Equal(t, InnerHash(LeafHash(sub1.Root()), LeafHash(sub2.Root())), parent.Root())
 
-	proof, err := parent.Proof(0)
+	leaf, siblings, err := parent.Proof(0)
 	require.NoError(t, err)
-	require.Equal(t, sub1.Root(), proof.Leaf)
-	require.NoError(t, VerifyProof(proof, parent.Root()))
+	require.Equal(t, sub1.Root(), leaf)
+	require.NoError(t, VerifyProof(0, leaf, siblings, parent.Root()))
 
 	// The subtree root must not pass as a node of the parent tree itself.
-	require.Error(t, VerifyProof(&types.MerkleProof{Index: 0, Leaf: nil, Siblings: nil}, parent.Root()))
+	require.Error(t, VerifyProof(0, nil, nil, parent.Root()))
 }
 
 func TestNextPowerOf2(t *testing.T) {

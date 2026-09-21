@@ -66,26 +66,25 @@ func TestMerkleProof(t *testing.T) {
 		{"srcDappId", 4 + 1, []byte("srcDappId-0")}, // header leaves(4) + second elem
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			proof, err := evtLog.Proof(tc.gidx)
+			leaf, siblings, err := evtLog.Proof(tc.gidx)
 			require.NoError(t, err)
-			require.Equal(t, tc.gidx, proof.Index)
-			require.Equal(t, tc.leaf, proof.Leaf)
+			require.Equal(t, tc.leaf, leaf)
 
-			require.NoError(t, evtLog.VerifyProof(proof))
-			require.NoError(t, merkle.VerifyProof(proof, evtLogRoot))
+			require.NoError(t, evtLog.VerifyProof(tc.gidx, leaf, siblings))
+			require.NoError(t, merkle.VerifyProof(tc.gidx, leaf, siblings, evtLogRoot))
 		})
 	}
 }
 
 func TestProof_IndexOutOfRange(t *testing.T) {
-	_, err := evtLog.Proof(-1)
+	_, _, err := evtLog.Proof(-1)
 	require.Error(t, err)
-	_, err = evtLog.Proof(evtLog.LeavesLen())
+	_, _, err = evtLog.Proof(evtLog.LeavesLen())
 	require.Error(t, err)
 
 	// The tree pads 12 leaves up to 16; the padding slots are not provable.
 	require.Equal(t, 12, evtLog.LeavesLen())
-	_, err = evtLog.Proof(12)
+	_, _, err = evtLog.Proof(12)
 	require.Error(t, err)
 }
 
@@ -98,13 +97,13 @@ func TestLeaf_IndexOutOfRange(t *testing.T) {
 
 // A proof of one event log must not verify against another log's root.
 func TestVerifyProof_ForeignRoot(t *testing.T) {
-	proof, err := evtLog.Proof(0)
+	leaf, siblings, err := evtLog.Proof(0)
 	require.NoError(t, err)
 
 	other := NewEventLog(
 		WithChannelId("otherChannel"), WithChaincodeId("chaincodeName"), WithTxId(txId))
 	other.SetElems(postMsgLog)
 
-	require.Error(t, merkle.VerifyProof(proof, other.Root()))
-	require.Error(t, other.VerifyProof(proof))
+	require.Error(t, merkle.VerifyProof(0, leaf, siblings, other.Root()))
+	require.Error(t, other.VerifyProof(0, leaf, siblings))
 }

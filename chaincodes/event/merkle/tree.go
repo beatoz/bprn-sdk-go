@@ -97,14 +97,14 @@ func (t *MerkleTree) LeafCount() int {
 	return len(t.leaves)
 }
 
-// Proof returns the inclusion proof of the leaf at the given index. The index
-// addresses the original leaves, so a padding slot has no proof.
-func (t *MerkleTree) Proof(index int) (*types.MerkleProof, error) {
+// Proof returns the leaf data at index -- not its hash -- and its sibling
+// hashes, leaf level first. The index is not returned; VerifyProof needs it.
+func (t *MerkleTree) Proof(index int) ([]byte, [][]byte, error) {
 	if t == nil {
-		return nil, errors.New("nil tree")
+		return nil, nil, errors.New("nil tree")
 	}
 	if index < 0 || index >= len(t.leaves) {
-		return nil, fmt.Errorf("index %d out of range [0, %d)", index, len(t.leaves))
+		return nil, nil, fmt.Errorf("index %d out of range [0, %d)", index, len(t.leaves))
 	}
 
 	siblings := make([][]byte, 0, bits.Len(uint(t.leafCount))-1)
@@ -117,26 +117,22 @@ func (t *MerkleTree) Proof(index int) (*types.MerkleProof, error) {
 		nodeIdx /= 2 // move to parent
 	}
 
-	return &types.MerkleProof{
-		Index:    index,
-		Leaf:     cloneLeaf(t.leaves[index]),
-		Siblings: siblings,
-	}, nil
+	return cloneLeaf(t.leaves[index]), siblings, nil
 }
 
 // VerifyProof recomputes the root from the proof and compares it with root,
 // which the caller must have obtained over a trusted path.
-func VerifyProof(proof *types.MerkleProof, root []byte) error {
-	if err := ValidateMerkleProof(proof); err != nil {
+func VerifyProof(index int, leaf []byte, siblings [][]byte, root []byte) error {
+	if err := ValidateProof(index, siblings); err != nil {
 		return err
 	}
 	if len(root) != HashSize {
 		return fmt.Errorf("invalid root length %d; expected %d", len(root), HashSize)
 	}
 
-	current := LeafHash(proof.Leaf)
-	nodeIdx := proof.Index
-	for _, sibling := range proof.Siblings {
+	current := LeafHash(leaf)
+	nodeIdx := index
+	for _, sibling := range siblings {
 		if nodeIdx%2 == 0 { // current is left child
 			current = InnerHash(current, sibling)
 		} else { // current is right child
@@ -151,24 +147,20 @@ func VerifyProof(proof *types.MerkleProof, root []byte) error {
 	return nil
 }
 
-func ValidateMerkleProof(proof *types.MerkleProof) error {
-	if proof == nil {
-		return errors.New("nil proof")
+func ValidateProof(index int, siblings [][]byte) error {
+	if len(siblings) > MaxMerkleDepth {
+		return fmt.Errorf("proof too deep; max %d, got %d", MaxMerkleDepth, len(siblings))
 	}
 
-	if len(proof.Siblings) > MaxMerkleDepth {
-		return fmt.Errorf("proof too deep; max %d, got %d", MaxMerkleDepth, len(proof.Siblings))
-	}
-
-	for i, sibling := range proof.Siblings {
+	for i, sibling := range siblings {
 		if len(sibling) != HashSize {
 			return fmt.Errorf("sibling %d: invalid length %d; expected %d", i, len(sibling), HashSize)
 		}
 	}
 
-	n := 1 << len(proof.Siblings)
-	if proof.Index < 0 || proof.Index >= n {
-		return fmt.Errorf("index %d out of range [0, %d)", proof.Index, n)
+	n := 1 << len(siblings)
+	if index < 0 || index >= n {
+		return fmt.Errorf("index %d out of range [0, %d)", index, n)
 	}
 	return nil
 }

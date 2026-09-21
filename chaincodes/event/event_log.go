@@ -109,23 +109,23 @@ func (log *EventLog) Root() []byte {
 	return log.buildMerkleTree().Root()
 }
 
-func (log *EventLog) Proof(gidx int) (*types.MerkleProof, error) {
+func (log *EventLog) Proof(gidx int) ([]byte, [][]byte, error) {
 	if gidx < 0 || gidx >= log.LeavesLen() {
-		return nil, errors.New("index out of range")
+		return nil, nil, errors.New("index out of range")
 	}
 	tree := log.buildMerkleTree()
 	if tree == nil {
-		return nil, errors.New("failed to build merkle tree")
+		return nil, nil, errors.New("failed to build merkle tree")
 	}
 	return tree.Proof(gidx)
 }
 
-func (log *EventLog) VerifyProof(proof *types.MerkleProof) error {
+func (log *EventLog) VerifyProof(gidx int, leaf []byte, siblings [][]byte) error {
 	tree := log.buildMerkleTree()
 	if tree == nil {
 		return errors.New("failed to build merkle tree")
 	}
-	return merkle.VerifyProof(proof, tree.Root())
+	return merkle.VerifyProof(gidx, leaf, siblings, tree.Root())
 }
 
 var _ types.IMerkleProvable = (*EventLog)(nil)

@@ -95,37 +95,41 @@ err = newLog.UnmarshalDER(data, true)
 ```go
 root := log.Root()
 
-proof, err := log.Proof(0) // *types.MerkleProof{Index, Leaf, Siblings}
+leaf, siblings, err := log.Proof(0)
 if err != nil {
     // gidx 가 [0, LeavesLen()) 밖이면 오류
 }
 ```
 
-`types.MerkleProof.Leaf` 는 리프 해시가 아니라 **원본 데이터**다. 검증기가 항상 `LeafHash` 를 적용하기 때문이다.
+증명은 `(index, leaf, siblings)` 세 값이다. `Proof` 는 이 중 **`index` 를 돌려주지 않는다** — 호출자가 방금 건넨 인자이기 때문이다. 검증 시 다시 필요하므로 호출자가 들고 있어야 하고, 증명을 전송한다면 세 값을 함께 보내야 한다.
+
+`leaf` 는 리프 해시가 아니라 **원본 데이터**다. 검증기가 항상 `LeafHash` 를 적용하기 때문이다.
 
 **증명 검증 — 두 경로를 구분한다.**
 
 ```go
 // (1) 자기 일관성 확인: 이 EventLog 자신의 루트로 검증한다.
-err := log.VerifyProof(proof)
+err := log.VerifyProof(0, leaf, siblings)
 
 // (2) 신뢰된 외부 루트로 검증한다. 실제 증명 검증은 이 경로를 쓴다.
-err = merkle.VerifyProof(proof, trustedRoot)   // 예: 서명된 block_event_root 에서 유도한 루트
+err = merkle.VerifyProof(0, leaf, siblings, trustedRoot) // 예: 서명된 block_event_root 에서 유도한 루트
 ```
 
-`merkle.VerifyProof` 는 접기 전에 다음을 모두 검사한다.
+`merkle.VerifyProof` 는 접기 전에 다음을 모두 검사한다 (`merkle.ValidateProof` + 루트 길이).
 
-* `proof != nil`
 * `len(siblings) <= merkle.MaxMerkleDepth`
 * `root` 와 모든 sibling 이 정확히 32바이트
 * 증명 깊이로 복원한 `n = 1 << len(siblings)` 에 대해 `0 <= index < n`
 
-마지막 검사가 없으면 `index` 의 상위 비트가 무시되어 `index` 와 `index + n` 이 같은 증명으로 통과한다.
+마지막 검사가 없으면 `index` 의 상위 비트가 무시되어 `index` 와 `index + n` 이 같은 증명으로 통과한다. `index` 가 구조체에 묶여 오지 않더라도 이 검사는 검증기 입력에 대해 그대로 적용되므로 방어는 유지된다.
 
 #### 5. 슬라이스 소유권
 
-`merkle.MerkleTree` 는 넘겨받은 리프를 **deep copy** 하고, `Root()` 와 `Proof()` 는 **복사본**을 반환한다.
-호출자가 입력이나 반환값을 수정해도 트리의 루트와 이후 증명은 변하지 않는다.
+`merkle.MerkleTree` 는 넘겨받은 리프를 **복사하지 않고 그대로 들고 있는다**. 생성 후 그 슬라이스를 수정하면 루트는 그대로지만 `Proof` 가 트리가 커밋한 적 없는 리프를 돌려주므로 검증이 실패한다.
+
+반면 `Root()` 와 `Proof()` 가 돌려주는 값은 **복사본**이므로 호출자가 마음대로 써도 된다. 패딩 슬롯과 `nil` 리프는 패키지 전역 테이블을 가리키므로 이 복사가 반드시 필요하다.
+
+자세한 내용은 [docs/merkle-slice-ownership.md](./docs/merkle-slice-ownership.md) 를 참고한다.
 
 #### 6. Custom Event Element Implementation
 
@@ -159,8 +163,8 @@ type IEventElems interface {
 | 이전 | 현재 |
 |------|------|
 | `merkle.WithHashedLeaves(leaves)` | **삭제.** 모든 리프는 `LeafHash` 를 거친다. 32바이트 해시를 리프로 쓰더라도 `WithRawLeaves` 로 넘긴다 |
-| `VerifyProof(idx, data, siblings, root, preHashed...)` | `merkle.VerifyProof(proof *types.MerkleProof, root []byte) error` |
-| `tree.Proof(i) ([]byte, [][]byte, error)` — 첫 값은 리프 **해시** | `tree.Proof(i) (*types.MerkleProof, error)` — `Leaf` 는 **원본 데이터** |
-| `log.Proof(gidx) ([]byte, [][]byte, error)` | `log.Proof(gidx) (*types.MerkleProof, error)` |
-| `log.VerifyProof(gidx, siblings)` | `log.VerifyProof(proof)` |
+| `VerifyProof(idx, data, siblings, root, preHashed...)` | `merkle.VerifyProof(index int, leaf []byte, siblings [][]byte, root []byte) error` — `preHashed` 없음 |
+| `tree.Proof(i) ([]byte, [][]byte, error)` — 첫 값은 리프 **해시** | `tree.Proof(i) ([]byte, [][]byte, error)` — 첫 값은 리프 **원본 데이터** |
+| `log.Proof(gidx) ([]byte, [][]byte, error)` | 동일. 단 첫 값이 리프 **원본 데이터** |
+| `log.VerifyProof(gidx, siblings)` | `log.VerifyProof(gidx int, leaf []byte, siblings [][]byte) error` — `leaf` 인자 추가 |
 | 하위 트리 루트를 상위 트리에 그대로 배치 | 상위 트리의 **원본 리프 데이터**이므로 `LeafHash` 를 다시 거친다 (트리 계층 간 도메인 바인딩) |
