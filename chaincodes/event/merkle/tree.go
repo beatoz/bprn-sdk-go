@@ -52,29 +52,29 @@ func newMerkleTree(leaves [][]byte) *MerkleTree {
 	}
 
 	// populate leaves
-	for i := 0; i < leafCount; i++ {
+	for leafIdx := 0; leafIdx < leafCount; leafIdx++ {
 		switch {
-		case i >= len(tree.leaves):
-			tree.nodes[leafCount+i] = emptyHashAt[0] // padding slot: no leaf here
-		case tree.leaves[i] == nil:
-			tree.nodes[leafCount+i] = nullHashAt[0] // leaf slot holding nil
+		case leafIdx >= len(tree.leaves):
+			tree.nodes[leafCount+leafIdx] = emptyHashAt[0] // padding slot: no leaf here
+		case tree.leaves[leafIdx] == nil:
+			tree.nodes[leafCount+leafIdx] = nullHashAt[0] // leaf slot holding nil
 		default:
-			tree.nodes[leafCount+i] = LeafHash(tree.leaves[i])
+			tree.nodes[leafCount+leafIdx] = LeafHash(tree.leaves[leafIdx])
 		}
 	}
 
-	height := 0 // height of the children of node i
-	for i := leafCount - 1; i >= 1; i-- {
-		left, right := tree.nodes[2*i], tree.nodes[2*i+1]
+	height := 0 // height of the children of nodeIdx
+	for nodeIdx := leafCount - 1; nodeIdx >= 1; nodeIdx-- {
+		left, right := tree.nodes[2*nodeIdx], tree.nodes[2*nodeIdx+1]
 		switch {
 		case bytes.Equal(left, emptyHashAt[height]) && bytes.Equal(right, emptyHashAt[height]):
-			tree.nodes[i] = emptyHashAt[height+1]
+			tree.nodes[nodeIdx] = emptyHashAt[height+1]
 		case bytes.Equal(left, nullHashAt[height]) && bytes.Equal(right, nullHashAt[height]):
-			tree.nodes[i] = nullHashAt[height+1]
+			tree.nodes[nodeIdx] = nullHashAt[height+1]
 		default:
-			tree.nodes[i] = InnerHash(left, right)
+			tree.nodes[nodeIdx] = InnerHash(left, right)
 		}
-		if i == leafCount>>(height+1) { // last node of this height
+		if nodeIdx == leafCount>>(height+1) { // last node of this height
 			height++
 		}
 	}
@@ -123,7 +123,7 @@ func (t *MerkleTree) Proof(index int) ([]byte, [][]byte, error) {
 // VerifyProof recomputes the root from the proof and compares it with root,
 // which the caller must have obtained over a trusted path.
 func VerifyProof(index int, leaf []byte, siblings [][]byte, root []byte) error {
-	if err := ValidateProof(index, siblings); err != nil {
+	if err := checkProofShape(index, siblings); err != nil {
 		return err
 	}
 	if len(root) != HashSize {
@@ -147,7 +147,7 @@ func VerifyProof(index int, leaf []byte, siblings [][]byte, root []byte) error {
 	return nil
 }
 
-func ValidateProof(index int, siblings [][]byte) error {
+func checkProofShape(index int, siblings [][]byte) error {
 	if len(siblings) > MaxMerkleDepth {
 		return fmt.Errorf("proof too deep; max %d, got %d", MaxMerkleDepth, len(siblings))
 	}

@@ -115,7 +115,7 @@ err := log.VerifyProof(0, leaf, siblings)
 err = merkle.VerifyProof(0, leaf, siblings, trustedRoot) // 예: 서명된 block_event_root 에서 유도한 루트
 ```
 
-`merkle.VerifyProof` 는 접기 전에 다음을 모두 검사한다 (`merkle.ValidateProof` + 루트 길이).
+`merkle.VerifyProof` 는 접기 전에 다음을 모두 검사한다.
 
 * `len(siblings) <= merkle.MaxMerkleDepth`
 * `root` 와 모든 sibling 이 정확히 32바이트
