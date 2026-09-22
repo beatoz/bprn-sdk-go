@@ -5,16 +5,42 @@ import (
 	"errors"
 
 	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
+	"github.com/beatoz/bprn-sdk-go/chaincodes/event/types"
 )
 
 type eventLogHeader struct {
 	ChannelId   string `json:"channel_id"`
 	ChaincodeId string `json:"chaincode_id"`
-	TxId        string `json:"tx_id"`
+	TxId        []byte `json:"tx_id"`
+	Selector    []byte `json:"selector"`
+}
+
+func WithChannelId(channelId string) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.ChannelId = channelId
+	}
+}
+
+func WithChaincodeId(ccId string) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.ChaincodeId = ccId
+	}
+}
+
+func WithTxId(txId []byte) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.TxId = txId
+	}
+}
+
+func WithSelector(selector []byte) func(x *EventLog) {
+	return func(x *EventLog) {
+		x.Header.Selector = selector
+	}
 }
 
 func (x *eventLogHeader) Leaf(i int) []byte {
-	if x.LeavesLen() <= i {
+	if i < 0 || x.LeavesLen() <= i {
 		return nil
 	}
 	return x.Leaves()[i]
@@ -24,7 +50,8 @@ func (x *eventLogHeader) Leaves() [][]byte {
 	return [][]byte{
 		[]byte(x.ChannelId),
 		[]byte(x.ChaincodeId),
-		[]byte(x.TxId),
+		x.TxId,
+		x.Selector,
 	}
 }
 
@@ -32,7 +59,7 @@ func (x *eventLogHeader) LeavesLen() int {
 	return len(x.Leaves())
 }
 
-var _ merkle.ILeaves = (*eventLogHeader)(nil)
+var _ types.ILeaves = (*eventLogHeader)(nil)
 
 type EventLog struct {
 	Header *eventLogHeader `json:"header"`
@@ -40,14 +67,18 @@ type EventLog struct {
 	tree   *merkle.MerkleTree
 }
 
-func NewEventLog(channelId, chaincodeId, txId string) *EventLog {
-	return &EventLog{
-		Header: &eventLogHeader{ChannelId: channelId, ChaincodeId: chaincodeId, TxId: txId},
+func NewEventLog(opt ...func(*EventLog)) *EventLog {
+	evtlog := &EventLog{
+		Header: &eventLogHeader{},
 	}
+	for _, f := range opt {
+		f(evtlog)
+	}
+	return evtlog
 }
 
 func (log *EventLog) Leaf(gidx int) []byte {
-	if gidx >= log.LeavesLen() {
+	if gidx < 0 || gidx >= log.LeavesLen() {
 		return nil
 	}
 	if gidx < log.Header.LeavesLen() {
@@ -65,49 +96,43 @@ func (log *EventLog) LeavesLen() int {
 	return log.Header.LeavesLen() + len(log.Elems)
 }
 
-var _ merkle.ILeaves = (*EventLog)(nil)
+var _ types.ILeaves = (*EventLog)(nil)
 
-func (log *EventLog) Root() []byte {
+func (log *EventLog) buildMerkleTree() *merkle.MerkleTree {
 	if log.tree == nil {
 		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
 	}
-	return log.tree.Root()
+	return log.tree
+}
+
+func (log *EventLog) Root() []byte {
+	return log.buildMerkleTree().Root()
 }
 
 func (log *EventLog) Proof(gidx int) ([]byte, [][]byte, error) {
-	if gidx >= log.LeavesLen() {
+	if gidx < 0 || gidx >= log.LeavesLen() {
 		return nil, nil, errors.New("index out of range")
 	}
-	if log.tree == nil {
-		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
+	tree := log.buildMerkleTree()
+	if tree == nil {
+		return nil, nil, errors.New("failed to build merkle tree")
 	}
-	return log.tree.Proof(gidx)
+	return tree.Proof(gidx)
 }
 
-func (log *EventLog) VerifyProof(gidx int, siblings [][]byte) error {
-	if gidx >= log.LeavesLen() {
-		return errors.New("index out of range")
+func (log *EventLog) VerifyProof(gidx int, leaf []byte, siblings [][]byte) error {
+	tree := log.buildMerkleTree()
+	if tree == nil {
+		return errors.New("failed to build merkle tree")
 	}
-	if log.tree == nil {
-		log.tree = merkle.NewMerkleTree(merkle.WithILeaves(log))
-	}
-	return merkle.VerifyProof(gidx, log.Leaves()[gidx], siblings, log.tree.Root())
+	return merkle.VerifyProof(gidx, leaf, siblings, tree.Root())
 }
 
-var _ merkle.IMerkleProvable = (*EventLog)(nil)
+var _ types.IMerkleProvable = (*EventLog)(nil)
 
-func (log *EventLog) AddData(data []byte) {
-	log.Elems = append(log.Elems, data)
-	log.tree = nil
-}
-
-func (log *EventLog) AddLeaves(logs merkle.ILeaves) {
-	log.Elems = append(log.Elems, logs.Leaves()...)
-	log.tree = nil
-}
-
-func (log *EventLog) SetLogs(logs merkle.ILeaves) {
-	log.Elems = logs.Leaves()
+func (log *EventLog) SetElems(elems types.IEventElems) {
+	log.Header.Selector = elems.Selector()
+	log.Elems = elems.Leaves()
 	log.tree = nil
 }
 
@@ -119,7 +144,8 @@ func (log *EventLog) Reset() {
 type derEventLog struct {
 	ChannelId   string
 	ChaincodeId string
-	TxId        string
+	TxId        []byte
+	Selector    []byte
 	Elems       []asn1.RawValue
 }
 
@@ -131,6 +157,7 @@ func (log *EventLog) MarshalDER(onlyElems ...bool) ([]byte, error) {
 		ChannelId:   log.Header.ChannelId,
 		ChaincodeId: log.Header.ChaincodeId,
 		TxId:        log.Header.TxId,
+		Selector:    log.Header.Selector,
 	}
 	for _, e := range log.Elems {
 		d.Elems = append(d.Elems, asn1.RawValue{
@@ -162,6 +189,7 @@ func (log *EventLog) UnmarshalDER(data []byte, onlyElems ...bool) error {
 		ChannelId:   d.ChannelId,
 		ChaincodeId: d.ChaincodeId,
 		TxId:        d.TxId,
+		Selector:    d.Selector,
 	}
 	log.Elems = nil
 	for _, raw := range d.Elems {

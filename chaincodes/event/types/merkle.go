@@ -1,9 +1,9 @@
-package merkle
+package types
 
 type IMerkleProvable interface {
 	Root() []byte
 	Proof(int) ([]byte, [][]byte, error)
-	VerifyProof(int, [][]byte) error
+	VerifyProof(int, []byte, [][]byte) error
 }
 
 type ILeaves interface {

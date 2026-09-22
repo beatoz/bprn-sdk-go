@@ -1,12 +1,13 @@
 package samples
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 
-	"github.com/beatoz/bprn-sdk-go/chaincodes/event/merkle"
+	"github.com/beatoz/bprn-sdk-go/chaincodes/event/types"
 )
 
-type PostMessageEventLog struct {
+type PostMessageEventElems struct {
 	SrcChainId string `json:"src_chain_id,omitempty"`
 	SrcDappId  string `json:"src_dapp_id,omitempty"`
 	SrcAcctId  string `json:"src_acct_id,omitempty"`
@@ -17,14 +18,14 @@ type PostMessageEventLog struct {
 	MsgPayload []byte `json:"msg_payload,omitempty"`
 }
 
-func (p *PostMessageEventLog) Leaf(i int) []byte {
+func (p *PostMessageEventElems) Leaf(i int) []byte {
 	if i >= p.LeavesLen() {
 		return nil
 	}
 	return p.Leaves()[i]
 }
 
-func (p *PostMessageEventLog) Leaves() [][]byte {
+func (p *PostMessageEventElems) Leaves() [][]byte {
 	msgIdxBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(msgIdxBytes, p.MsgIdx)
 
@@ -40,8 +41,13 @@ func (p *PostMessageEventLog) Leaves() [][]byte {
 	}
 }
 
-func (p *PostMessageEventLog) LeavesLen() int {
+func (p *PostMessageEventElems) LeavesLen() int {
 	return len(p.Leaves())
 }
 
-var _ merkle.ILeaves = (*PostMessageEventLog)(nil)
+func (p *PostMessageEventElems) Selector() []byte {
+	h := sha256.Sum256([]byte("PostMessageEventElems(string,string,string,string,string,string,uint64,bytes)"))
+	return h[:]
+}
+
+var _ types.IEventElems = (*PostMessageEventElems)(nil)

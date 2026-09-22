@@ -1,141 +1,190 @@
 package merkle
 
 import (
-	"crypto/sha256"
+	"bytes"
+	"errors"
 	"fmt"
 	"math/bits"
+
+	"github.com/beatoz/bprn-sdk-go/chaincodes/event/types"
 )
 
-// MerkleTree is an array-based complete binary tree.
-// nodes is 1-indexed: nodes[1] = root, children of nodes[i] = nodes[2i], nodes[2i+1].
-// Leaves occupy indices [leafCount, 2*leafCount-1].
+// MerkleTree is the array-based complete binary tree of BTIP-48.
+//
+// nodes is 1-indexed: nodes[1] is the root and the children of nodes[i] are
+// nodes[2i] and nodes[2i+1]. Leaves occupy [leafCount, 2*leafCount-1], where
+// leafCount is the original leaf count rounded up to a power of two; the slots
+// past the original leaves hold EmptyHash.
 type MerkleTree struct {
 	nodes     [][]byte
-	leafCount int
+	leaves    [][]byte // the original leaves as handed in, kept for proofs
+	leafCount int      // n: leaf count after padding
 }
 
-type OptFunc func() ([][]byte, bool)
+type OptFunc func() [][]byte
 
-func WithILeaves(leaves ILeaves) OptFunc {
-	return func() ([][]byte, bool) {
-		return leaves.Leaves(), false
+func WithILeaves(leaves types.ILeaves) OptFunc {
+	return func() [][]byte {
+		return leaves.Leaves()
 	}
 }
 
 func WithRawLeaves(leaves [][]byte) OptFunc {
-	return func() ([][]byte, bool) {
-		return leaves, false
-	}
-}
-
-func WithHashedLeaves(leaves [][]byte) OptFunc {
-	return func() ([][]byte, bool) {
-		return leaves, true
+	return func() [][]byte {
+		return leaves
 	}
 }
 
 func NewMerkleTree(opt OptFunc) *MerkleTree {
-	leaves, preHashed := opt()
-	return newMerkleTree(leaves, preHashed)
+	return newMerkleTree(opt())
 }
 
-func newMerkleTree(leaves [][]byte, preHashed bool) *MerkleTree {
+func newMerkleTree(leaves [][]byte) *MerkleTree {
+	if len(leaves) > 1<<MaxMerkleDepth {
+		return nil
+	}
+
 	leafCount := nextPowerOf2(len(leaves))
 	tree := &MerkleTree{
 		nodes:     make([][]byte, leafCount*2), // 1-indexed, nodes[0] is unused
+		leaves:    leaves,
 		leafCount: leafCount,
 	}
 
 	// populate leaves
-	for i, leaf := range leaves {
-		if preHashed {
-			tree.nodes[leafCount+i] = leaf
-		} else {
-			h := sha256.Sum256(leaf)
-			tree.nodes[leafCount+i] = h[:]
+	for leafIdx := 0; leafIdx < leafCount; leafIdx++ {
+		switch {
+		case leafIdx >= len(tree.leaves):
+			tree.nodes[leafCount+leafIdx] = emptyHashAt[0] // padding slot: no leaf here
+		case tree.leaves[leafIdx] == nil:
+			tree.nodes[leafCount+leafIdx] = nullHashAt[0] // leaf slot holding nil
+		default:
+			tree.nodes[leafCount+leafIdx] = LeafHash(tree.leaves[leafIdx])
 		}
 	}
-	// remaining leaf slots are nil
 
-	// build internal nodes from bottom up
-	for i := leafCount - 1; i >= 1; i-- {
-		left := tree.nodes[2*i]
-		right := tree.nodes[2*i+1]
-		tree.nodes[i] = hashPair(left, right)
+	height := 0 // height of the children of nodeIdx
+	for nodeIdx := leafCount - 1; nodeIdx >= 1; nodeIdx-- {
+		left, right := tree.nodes[2*nodeIdx], tree.nodes[2*nodeIdx+1]
+		switch {
+		case bytes.Equal(left, emptyHashAt[height]) && bytes.Equal(right, emptyHashAt[height]):
+			tree.nodes[nodeIdx] = emptyHashAt[height+1]
+		case bytes.Equal(left, nullHashAt[height]) && bytes.Equal(right, nullHashAt[height]):
+			tree.nodes[nodeIdx] = nullHashAt[height+1]
+		default:
+			tree.nodes[nodeIdx] = InnerHash(left, right)
+		}
+		if nodeIdx == leafCount>>(height+1) { // last node of this height
+			height++
+		}
 	}
 
 	return tree
 }
 
-// Root returns the merkle root hash.
+// Root returns a copy of the merkle root hash.
 func (t *MerkleTree) Root() []byte {
-	return t.nodes[1]
+	if t == nil || len(t.nodes) < 2 {
+		return nil
+	}
+	return cloneHash(t.nodes[1])
 }
 
-// Proof returns the sibling hashes needed to verify the leaf at the given index.
-// The proof is ordered from leaf level to root level.
+func (t *MerkleTree) LeafCount() int {
+	if t == nil {
+		return 0
+	}
+	return len(t.leaves)
+}
+
+// Proof returns the leaf data at index -- not its hash -- and its sibling
+// hashes, leaf level first. The index is not returned; VerifyProof needs it.
 func (t *MerkleTree) Proof(index int) ([]byte, [][]byte, error) {
-	if index < 0 || index >= t.leafCount {
-		return nil, nil, fmt.Errorf("index %d out of range [0, %d)", index, t.leafCount)
+	if t == nil {
+		return nil, nil, errors.New("nil tree")
+	}
+	if index < 0 || index >= len(t.leaves) {
+		return nil, nil, fmt.Errorf("index %d out of range [0, %d)", index, len(t.leaves))
 	}
 
-	var proof [][]byte
+	siblings := make([][]byte, 0, bits.Len(uint(t.leafCount))-1)
 	nodeIdx := t.leafCount + index
 	for nodeIdx > 1 {
 		// sibling is the XOR toggle of the last bit
 		siblingIdx := nodeIdx ^ 1
-		proof = append(proof, t.nodes[siblingIdx])
+		sibling := cloneHash(t.nodes[siblingIdx])
+		siblings = append(siblings, sibling)
 		nodeIdx /= 2 // move to parent
 	}
-	return t.nodes[t.leafCount+index], proof, nil
+
+	return cloneLeaf(t.leaves[index]), siblings, nil
 }
 
-// VerifyProof verifies that data at the given index is part of the tree with the given root.
-// If preHashed is true, data is used as-is; otherwise it is hashed first.
-func VerifyProof(index int, data []byte, siblings [][]byte, root []byte, preHashed ...bool) error {
-	var leafHash []byte
-	if len(preHashed) > 0 && preHashed[0] {
-		leafHash = data
-	} else {
-		h := sha256.Sum256(data)
-		leafHash = h[:]
+// VerifyProof recomputes the root from the proof and compares it with root,
+// which the caller must have obtained over a trusted path.
+func VerifyProof(index int, leaf []byte, siblings [][]byte, root []byte) error {
+	if err := checkProofShape(index, siblings); err != nil {
+		return err
+	}
+	if len(root) != HashSize {
+		return fmt.Errorf("invalid root length %d; expected %d", len(root), HashSize)
 	}
 
-	current := leafHash
+	current := LeafHash(leaf)
 	nodeIdx := index
 	for _, sibling := range siblings {
 		if nodeIdx%2 == 0 { // current is left child
-			current = hashPair(current, sibling)
+			current = InnerHash(current, sibling)
 		} else { // current is right child
-			current = hashPair(sibling, current)
+			current = InnerHash(sibling, current)
 		}
 		nodeIdx /= 2
 	}
 
-	if len(current) != len(root) {
-		return fmt.Errorf("length mismatch; expected %d, got %d", len(current), len(root))
-	}
-	for i := range current {
-		if current[i] != root[i] {
-			return fmt.Errorf("hash mismatch; expected %x, got %x", current, root)
-		}
+	if !bytes.Equal(current, root) {
+		return fmt.Errorf("root mismatch; computed %x, expected %x", current, root)
 	}
 	return nil
 }
 
-func hashPair(left, right []byte) []byte {
-	if left == nil && right == nil {
+func checkProofShape(index int, siblings [][]byte) error {
+	if len(siblings) > MaxMerkleDepth {
+		return fmt.Errorf("proof too deep; max %d, got %d", MaxMerkleDepth, len(siblings))
+	}
+
+	for i, sibling := range siblings {
+		if len(sibling) != HashSize {
+			return fmt.Errorf("sibling %d: invalid length %d; expected %d", i, len(sibling), HashSize)
+		}
+	}
+
+	n := 1 << len(siblings)
+	if index < 0 || index >= n {
+		return fmt.Errorf("index %d out of range [0, %d)", index, n)
+	}
+	return nil
+}
+
+func cloneLeaves(leaves [][]byte) [][]byte {
+	if leaves == nil {
 		return nil
 	}
-	var buf []byte
-	if left != nil {
-		buf = append(buf, left...)
+	out := make([][]byte, len(leaves))
+	for i, leaf := range leaves {
+		out[i] = cloneLeaf(leaf)
 	}
-	if right != nil {
-		buf = append(buf, right...)
+	return out
+}
+
+func cloneLeaf(leaf []byte) []byte {
+	if leaf == nil {
+		return nil
 	}
-	h := sha256.Sum256(buf)
-	return h[:]
+	return append([]byte{}, leaf...)
+}
+
+func cloneHash(hash []byte) []byte {
+	return append([]byte(nil), hash...)
 }
 
 func nextPowerOf2(n int) int {
